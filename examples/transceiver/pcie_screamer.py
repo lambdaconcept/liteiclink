@@ -19,19 +19,19 @@ from liteiclink.transceiver.gtp_7series import GTPQuadPLL, GTP
 
 
 _io = [
-    ("clk100", 0, Pins("R4"), IOStandard("LVCMOS25")),
-    ("rst_n", Pins("AA1"), IOStandard("LVCMOS25")),
+    ("clk100", 0, Pins("R4"), IOStandard("LVCMOS33")),
+    ("rst_n", Pins("AA1"), IOStandard("LVCMOS33")),
 
-    ("user_led", 0, Pins("AB1"), IOStandard("LVCMOS25")),
-    ("user_led", 1, Pins("AB8"), IOStandard("LVCMOS25")),
+    ("user_led", 0, Pins("AB1"), IOStandard("LVCMOS33")),
+    ("user_led", 1, Pins("AB8"), IOStandard("LVCMOS33")),
 
-    ("user_btn", 0, Pins("AA1"), IOStandard("LVCMOS25")),
-    ("user_btn", 1, Pins("AB6"), IOStandard("LVCMOS25")),
+    ("user_btn", 0, Pins("AA1"), IOStandard("LVCMOS33")),
+    ("user_btn", 1, Pins("AB6"), IOStandard("LVCMOS33")),
 
     ("serial", 0,
         Subsignal("tx", Pins("Y6")),
         Subsignal("rx", Pins("AA6")),
-        IOStandard("LVCMOS25")
+        IOStandard("LVCMOS33")
     ),
 
     ("pcie_tx", 0,
@@ -42,41 +42,12 @@ _io = [
         Subsignal("p", Pins("B10")),
         Subsignal("n", Pins("A10")),
     ),
-
-    ("pcie_tx", 1,
-        Subsignal("p", Pins("B4")),
-        Subsignal("n", Pins("A4")),
-    ),
-    ("pcie_rx", 1,
-        Subsignal("p", Pins("B8")),
-        Subsignal("n", Pins("A8")),
-    ),
-
-    ("sfp_tx_disable_n", 0, Pins("AA20"), IOStandard("LVCMOS25")),
-    ("sfp_tx", 0,
-        Subsignal("p", Pins("D5")),
-        Subsignal("n", Pins("C5")),
-    ),
-    ("sfp_rx", 0,
-        Subsignal("p", Pins("D11")),
-        Subsignal("n", Pins("C11")),
-    ),
-
-    ("sfp_tx_disable_n", 1, Pins("V17"), IOStandard("LVCMOS25")),
-    ("sfp_tx", 1,
-        Subsignal("p", Pins("D7")),
-        Subsignal("n", Pins("C7")),
-    ),
-    ("sfp_rx", 1,
-        Subsignal("p", Pins("D9")),
-        Subsignal("n", Pins("C9")),
-    ),
 ]
 
 
 class Platform(XilinxPlatform):
     def __init__(self):
-        XilinxPlatform.__init__(self, "xc7a50t-fgg484-2", _io, toolchain="vivado")
+        XilinxPlatform.__init__(self, "xc7a35t-fgg484-2", _io, toolchain="vivado")
 
 class _CRG(Module):
     def __init__(self, clk, rst):
@@ -94,7 +65,7 @@ class _CRG(Module):
 
 
 class GTPTestSoC(SoCCore):
-    def __init__(self, platform, medium="sfp0"):
+    def __init__(self, platform):
         sys_clk_freq = int(100e6)
         SoCCore.__init__(self, platform, sys_clk_freq, cpu_type=None)
         clk100 = platform.request("clk100")
@@ -112,22 +83,8 @@ class GTPTestSoC(SoCCore):
         self.submodules += qpll
 
         # gtp
-        if medium == "sfp0":
-            self.comb += platform.request("sfp_tx_disable_n", 0).eq(1)
-            tx_pads = platform.request("sfp_tx", 0)
-            rx_pads = platform.request("sfp_rx", 0)
-        elif medium == "sfp1":
-            self.comb += platform.request("sfp_tx_disable_n", 1).eq(1)
-            tx_pads = platform.request("sfp_tx", 1)
-            rx_pads = platform.request("sfp_rx", 1)
-        elif medium == "pcie0":
-            tx_pads = platform.request("pcie_tx", 0)
-            rx_pads = platform.request("pcie_rx", 0)
-        elif medium == "pcie1":
-            tx_pads = platform.request("pcie_tx", 1)
-            rx_pads = platform.request("pcie_rx", 1)
-        else:
-            raise ValueError
+        tx_pads = platform.request("pcie_tx", 0)
+        rx_pads = platform.request("pcie_rx", 0)
         gtp = GTP(qpll, tx_pads, rx_pads, sys_clk_freq,
             data_width=20,
             clock_aligner=False,
@@ -165,12 +122,12 @@ def main():
     if "load" in sys.argv[1:]:
         from litex.build.xilinx import VivadoProgrammer
         prog = VivadoProgrammer()
-        prog.load_bitstream("build/gateware/pcie_cpri.bit")
+        prog.load_bitstream("build/gateware/pcie_screamer.bit")
     else:
         platform = Platform()
         soc = GTPTestSoC(platform)
         builder = Builder(soc, output_dir="build", compile_gateware=True)
-        vns = builder.build(build_name="pcie_cpri")
+        vns = builder.build(build_name="pcie_screamer")
 
 
 if __name__ == "__main__":
