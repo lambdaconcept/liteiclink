@@ -4,7 +4,7 @@
 from functools import reduce
 from operator import xor
 
-from migen import *
+from nmigen.compat import *
 
 from litex.soc.interconnect import stream
 

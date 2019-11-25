@@ -3,9 +3,9 @@
 
 from math import ceil
 
-from migen import *
-from migen.genlib.cdc import MultiReg
-from migen.genlib.misc import WaitTimer
+from nmigen.compat import *
+from nmigen.compat.genlib.cdc import MultiReg
+from nmigen.compat.genlib.misc import WaitTimer
 
 
 __all__ = ["GTHTXInit", "GTHRXInit"]

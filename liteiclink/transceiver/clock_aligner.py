@@ -4,8 +4,8 @@ from math import ceil
 from functools import reduce
 from operator import add
 
-from migen import *
-from migen.genlib.cdc import MultiReg, PulseSynchronizer
+from nmigen.compat import *
+from nmigen.compat.genlib.cdc import MultiReg, PulseSynchronizer
 
 
 # Changes the phase of the transceiver RX clock to align the comma to

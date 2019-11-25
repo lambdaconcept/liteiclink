@@ -1,10 +1,10 @@
 # This file is Copyright (c) 2019 Florent Kermarrec <florent@enjoy-digital.fr>
 # License: BSD
 
-from migen import *
-from migen.genlib.misc import WaitTimer
-from migen.genlib.cdc import MultiReg, PulseSynchronizer
-from migen.genlib.resetsync import AsyncResetSynchronizer
+from nmigen.compat import *
+from nmigen.compat.genlib.misc import WaitTimer
+from nmigen.compat.genlib.cdc import MultiReg, PulseSynchronizer
+from nmigen.compat.genlib.resetsync import AsyncResetSynchronizer
 
 from litex.soc.interconnect.csr import *
 from litex.soc.interconnect import stream
@@ -231,19 +231,19 @@ class SerDesECP5(Module, AutoCSR):
         self.specials += [
             MultiReg(self.rx_align, rx_align, "rx"),
             MultiReg(self.rx_prbs_config, rx_prbs_config, "rx"),
-            MultiReg(rx_los, self.rx_idle, "sys"),
-            MultiReg(rx_prbs_errors, self.rx_prbs_errors, "sys"), # FIXME
+            MultiReg(rx_los, self.rx_idle, "sync"),
+            MultiReg(rx_prbs_errors, self.rx_prbs_errors, "sync"), # FIXME
         ]
 
         # Clocking ---------------------------------------------------------------------------------
         self.clock_domains.cd_tx = ClockDomain()
         self.comb += self.cd_tx.clk.eq(self.txoutclk)
-        self.specials += AsyncResetSynchronizer(self.cd_tx, ResetSignal("sys"))
+        self.specials += AsyncResetSynchronizer(self.cd_tx, ResetSignal("sync"))
         self.specials += MultiReg(~self.cd_tx.rst, self.tx_ready)
 
         self.clock_domains.cd_rx = ClockDomain()
         self.comb += self.cd_rx.clk.eq(self.rxoutclk)
-        self.specials += AsyncResetSynchronizer(self.cd_rx, ResetSignal("sys"))
+        self.specials += AsyncResetSynchronizer(self.cd_rx, ResetSignal("sync"))
         self.specials += MultiReg(~self.cd_rx.rst, self.rx_ready)
 
         # DCU instance -----------------------------------------------------------------------------
@@ -259,9 +259,9 @@ class SerDesECP5(Module, AutoCSR):
             i_D_FFC_MACROPDB        = 1,
 
             # DCU — reset
-            i_D_FFC_MACRO_RST       = ResetSignal("sys"),
-            i_D_FFC_DUAL_RST        = ResetSignal("sys"),
-            i_D_FFC_TRST            = ResetSignal("sys"),
+            i_D_FFC_MACRO_RST       = ResetSignal("sync"),
+            i_D_FFC_DUAL_RST        = ResetSignal("sync"),
+            i_D_FFC_TRST            = ResetSignal("sync"),
 
             # DCU — clocking
             i_D_REFCLKI             = pll.refclk,
@@ -494,7 +494,7 @@ class SerDesECP5(Module, AutoCSR):
         if clock_aligner:
             clock_aligner = BruteforceClockAligner(clock_aligner_comma, self.tx_clk_freq)
             self.submodules.clock_aligner = clock_aligner
-            ps_restart = PulseSynchronizer("tx", "sys")
+            ps_restart = PulseSynchronizer("tx", "sync")
             self.submodules += ps_restart
             self.comb += [
                 clock_aligner.rxdata.eq(rx_data),

@@ -1,9 +1,9 @@
 # This file is Copyright (c) 2017-2019 Florent Kermarrec <florent@enjoy-digital.fr>
 # License: BSD
 
-from migen import *
-from migen.genlib.cdc import MultiReg, PulseSynchronizer
-from migen.genlib.resetsync import AsyncResetSynchronizer
+from nmigen.compat import *
+from nmigen.compat.genlib.cdc import MultiReg, PulseSynchronizer
+from nmigen.compat.genlib.resetsync import AsyncResetSynchronizer
 
 from litex.soc.cores.clock import *
 from litex.soc.interconnect.csr import *
@@ -262,7 +262,7 @@ class GTX(Module, AutoCSR):
 
         self.specials += [
             MultiReg(self.rx_prbs_config, rx_prbs_config, "rx"),
-            MultiReg(rx_prbs_errors, self.rx_prbs_errors, "sys"), # FIXME
+            MultiReg(rx_prbs_errors, self.rx_prbs_errors, "sync"), # FIXME
         ]
 
         # # #
@@ -1012,7 +1012,7 @@ class GTX(Module, AutoCSR):
         if clock_aligner:
             clock_aligner = BruteforceClockAligner(clock_aligner_comma, self.tx_clk_freq)
             self.submodules.clock_aligner = clock_aligner
-            ps_restart = PulseSynchronizer("tx", "sys")
+            ps_restart = PulseSynchronizer("tx", "sync")
             self.submodules += ps_restart
             self.comb += [
                 clock_aligner.rxdata.eq(rxdata),

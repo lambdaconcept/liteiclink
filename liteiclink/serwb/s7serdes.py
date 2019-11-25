@@ -1,9 +1,9 @@
 # This file is Copyright (c) 2017-2019 Florent Kermarrec <florent@enjoy-digital.fr>
 # License: BSD
 
-from migen import *
-from migen.genlib.io import *
-from migen.genlib.misc import BitSlip, WaitTimer
+from nmigen.compat import *
+from nmigen.compat.genlib.io import *
+from nmigen.compat.genlib.misc import BitSlip, WaitTimer
 
 from litex.soc.interconnect import stream
 from litex.soc.cores.code_8b10b import Encoder, Decoder
@@ -34,8 +34,8 @@ class _S7SerdesClocking(Module):
 
                     o_OQ=self.refclk,
                     i_OCE=1,
-                    i_RST=ResetSignal("sys"),
-                    i_CLK=ClockSignal("sys4x"), i_CLKDIV=ClockSignal("sys"),
+                    i_RST=ResetSignal("sync"),
+                    i_CLK=ClockSignal("sys4x"), i_CLKDIV=ClockSignal("sync"),
                     i_D1=converter.source.data[0], i_D2=converter.source.data[1],
                     i_D3=converter.source.data[2], i_D4=converter.source.data[3],
                     i_D5=converter.source.data[4], i_D6=converter.source.data[5],
@@ -80,8 +80,8 @@ class _S7SerdesTX(Module):
 
                 o_OQ=data,
                 i_OCE=1,
-                i_RST=ResetSignal("sys"),
-                i_CLK=ClockSignal("sys4x"), i_CLKDIV=ClockSignal("sys"),
+                i_RST=ResetSignal("sync"),
+                i_CLK=ClockSignal("sys4x"), i_CLKDIV=ClockSignal("sync"),
                 i_D1=datapath.source.data[0], i_D2=datapath.source.data[1],
                 i_D3=datapath.source.data[2], i_D4=datapath.source.data[3],
                 i_D5=datapath.source.data[4], i_D6=datapath.source.data[5],
@@ -133,9 +133,9 @@ class _S7SerdesRX(Module):
 
                 i_DDLY=data_delayed,
                 i_CE1=1,
-                i_RST=ResetSignal("sys"),
+                i_RST=ResetSignal("sync"),
                 i_CLK=ClockSignal("sys4x"), i_CLKB=~ClockSignal("sys4x"),
-                i_CLKDIV=ClockSignal("sys"),
+                i_CLKDIV=ClockSignal("sync"),
                 i_BITSLIP=0,
                 o_Q8=data_deserialized[0], o_Q7=data_deserialized[1],
                 o_Q6=data_deserialized[2], o_Q5=data_deserialized[3],

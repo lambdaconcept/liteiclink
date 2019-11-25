@@ -5,9 +5,9 @@
 
 import sys
 
-from migen import *
-from migen.genlib.misc import WaitTimer
-from migen.genlib.resetsync import AsyncResetSynchronizer
+from nmigen.compat import *
+from nmigen.compat.genlib.misc import WaitTimer
+from nmigen.compat.genlib.resetsync import AsyncResetSynchronizer
 
 from litex.soc.interconnect.csr import *
 
@@ -51,8 +51,8 @@ serwb_io = [
 
 class _CRG(Module):
     def __init__(self, platform):
-        self.clock_domains.cd_sys = ClockDomain()
-        self.clock_domains.cd_sys4x = ClockDomain()
+        self.clock_domains.cd_sync = ClockDomain()
+        self.clock_domains.cd_sync4x = ClockDomain()
         self.clock_domains.cd_clk200 = ClockDomain()
 
         clk100 = platform.request("clk100")
@@ -77,10 +77,10 @@ class _CRG(Module):
                 # 200MHz
                 p_CLKOUT1_DIVIDE=5, p_CLKOUT1_PHASE=0.0, o_CLKOUT1=pll_clk200
             ),
-            Instance("BUFR", p_BUFR_DIVIDE="4", i_I=pll_sys4x, o_O=self.cd_sys.clk),
-            Instance("BUFIO", i_I=pll_sys4x, o_O=self.cd_sys4x.clk),
+            Instance("BUFR", p_BUFR_DIVIDE="4", i_I=pll_sys4x, o_O=self.cd_sync.clk),
+            Instance("BUFIO", i_I=pll_sys4x, o_O=self.cd_sync4x.clk),
             Instance("BUFG", i_I=pll_clk200, o_O=self.cd_clk200.clk),
-            AsyncResetSynchronizer(self.cd_sys, ~pll_locked | reset),
+            AsyncResetSynchronizer(self.cd_sync, ~pll_locked | reset),
             AsyncResetSynchronizer(self.cd_clk200, ~pll_locked | reset)
         ]
 

@@ -5,8 +5,8 @@
 
 import sys
 
-from migen import *
-from migen.genlib.resetsync import AsyncResetSynchronizer
+from nmigen.compat import *
+from nmigen.compat.genlib.resetsync import AsyncResetSynchronizer
 
 from litex.build.generic_platform import *
 from litex.build.xilinx import XilinxPlatform
@@ -80,13 +80,13 @@ class Platform(XilinxPlatform):
 
 class _CRG(Module):
     def __init__(self, clk, rst):
-        self.clock_domains.cd_sys = ClockDomain()
+        self.clock_domains.cd_sync = ClockDomain()
         self.clock_domains.cd_clk125 = ClockDomain()
 
         # # #
 
-        self.comb += self.cd_sys.clk.eq(clk)
-        self.specials += AsyncResetSynchronizer(self.cd_sys, rst)
+        self.comb += self.cd_sync.clk.eq(clk)
+        self.specials += AsyncResetSynchronizer(self.cd_sync, rst)
 
         self.submodules.pll = pll = S7PLL()
         pll.register_clkin(clk, 100e6)
@@ -146,14 +146,14 @@ class GTPTestSoC(SoCCore):
             gtp.encoder.d[1].eq(counter[26:]),
         ]
 
-        self.crg.cd_sys.clk.attr.add("keep")
+        self.crg.cd_sync.clk.attr.add("keep")
         gtp.cd_tx.clk.attr.add("keep")
         gtp.cd_rx.clk.attr.add("keep")
-        platform.add_period_constraint(self.crg.cd_sys.clk, 1e9/100e6)
+        platform.add_period_constraint(self.crg.cd_sync.clk, 1e9/100e6)
         platform.add_period_constraint(gtp.cd_tx.clk, 1e9/gtp.tx_clk_freq)
         platform.add_period_constraint(gtp.cd_rx.clk, 1e9/gtp.rx_clk_freq)
         self.platform.add_false_path_constraints(
-            self.crg.cd_sys.clk,
+            self.crg.cd_sync.clk,
             gtp.cd_tx.clk,
             gtp.cd_rx.clk)
 
@@ -168,7 +168,7 @@ def main():
         prog.load_bitstream("build/gateware/pcie_cpri.bit")
     else:
         platform = Platform()
-        soc = GTPTestSoC(platform)
+        soc = GTPTestSoC(platform, medium="pcie0")
         builder = Builder(soc, output_dir="build", compile_gateware=True)
         vns = builder.build(build_name="pcie_cpri")
 

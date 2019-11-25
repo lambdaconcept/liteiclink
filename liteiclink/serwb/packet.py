@@ -3,8 +3,8 @@
 
 from math import ceil
 
-from migen import *
-from migen.genlib.misc import WaitTimer
+from nmigen.compat import *
+from nmigen.compat.genlib.misc import WaitTimer
 
 from litex.gen import *
 

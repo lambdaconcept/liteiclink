@@ -2,7 +2,7 @@
 import unittest
 import random
 
-from migen import *
+from nmigen.compat import *
 
 from litex.gen.sim import *
 

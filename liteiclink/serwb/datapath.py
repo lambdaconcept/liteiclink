@@ -1,9 +1,9 @@
 # This file is Copyright (c) 2017-2019 Florent Kermarrec <florent@enjoy-digital.fr>
 # License: BSD
 
-from migen import *
-from migen.genlib.io import *
-from migen.genlib.misc import BitSlip, WaitTimer
+from nmigen.compat import *
+from nmigen.compat.genlib.io import *
+from nmigen.compat.genlib.misc import BitSlip, WaitTimer
 
 from litex.soc.interconnect import stream
 from litex.soc.cores.code_8b10b import Encoder, Decoder

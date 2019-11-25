@@ -1,7 +1,7 @@
 # This file is Copyright (c) 2017-2019 Florent Kermarrec <florent@enjoy-digital.fr>
 # License: BSD
 
-from migen import *
+from nmigen.compat import *
 
 from litex.soc.interconnect import stream
 

@@ -4,8 +4,8 @@ import os
 import sys
 sys.path.append("../")
 
-from migen import *
-from migen.genlib.resetsync import AsyncResetSynchronizer
+from nmigen.compat import *
+from nmigen.compat.genlib.resetsync import AsyncResetSynchronizer
 
 from litex.build.generic_platform import *
 from litex.build.xilinx import XilinxPlatform
@@ -42,8 +42,8 @@ class Platform(XilinxPlatform):
 
 class CRG(Module):
     def __init__(self, clk125):
-        self.clock_domains.cd_sys = ClockDomain()
-        self.clock_domains.cd_sys4x = ClockDomain()
+        self.clock_domains.cd_sync = ClockDomain()
+        self.clock_domains.cd_sync4x = ClockDomain()
         self.clock_domains.cd_clk200 = ClockDomain()
 
         pll_locked = Signal()
@@ -69,11 +69,11 @@ class CRG(Module):
                      # 200MHz
                      p_CLKOUT2_DIVIDE=5, p_CLKOUT2_PHASE=0.0, o_CLKOUT2=pll_clk200
             ),
-            Instance("BUFG", i_I=pll_sys, o_O=self.cd_sys.clk),
-            Instance("BUFG", i_I=pll_sys4x, o_O=self.cd_sys4x.clk),
+            Instance("BUFG", i_I=pll_sys, o_O=self.cd_sync.clk),
+            Instance("BUFG", i_I=pll_sys4x, o_O=self.cd_sync4x.clk),
             Instance("BUFG", i_I=pll_clk200, o_O=self.cd_clk200.clk),
-            AsyncResetSynchronizer(self.cd_sys, ~pll_locked),
-            AsyncResetSynchronizer(self.cd_sys4x, ~pll_locked),
+            AsyncResetSynchronizer(self.cd_sync, ~pll_locked),
+            AsyncResetSynchronizer(self.cd_sync4x, ~pll_locked),
             AsyncResetSynchronizer(self.cd_clk200, ~pll_locked)
         ]
 

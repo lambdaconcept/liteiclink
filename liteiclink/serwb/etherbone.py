@@ -13,7 +13,7 @@ and introduces some limitations:
 - 1 record per frame
 """
 
-from migen import *
+from nmigen.compat import *
 
 from litex.soc.interconnect import stream
 from litex.soc.interconnect import wishbone

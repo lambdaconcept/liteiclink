@@ -5,8 +5,8 @@
 
 import sys
 
-from migen import *
-from migen.genlib.io import CRG
+from nmigen.compat import *
+from nmigen.compat.genlib.io import CRG
 
 from litex.boards.platforms import kc705
 
@@ -100,14 +100,14 @@ class GTXTestSoC(SoCCore):
         self.comb += platform.request("user_led", 6).eq(rx_counter[26])
 
         # constraints
-        self.crg.cd_sys.clk.attr.add("keep")
+        self.crg.cd_sync.clk.attr.add("keep")
         gtx.cd_tx.clk.attr.add("keep")
         gtx.cd_rx.clk.attr.add("keep")
-        platform.add_period_constraint(self.crg.cd_sys.clk, platform.default_clk_period)
+        platform.add_period_constraint(self.crg.cd_sync.clk, platform.default_clk_period)
         platform.add_period_constraint(gtx.cd_tx.clk, 1e9/gtx.tx_clk_freq)
         platform.add_period_constraint(gtx.cd_rx.clk, 1e9/gtx.rx_clk_freq)
         self.platform.add_false_path_constraints(
-            self.crg.cd_sys.clk,
+            self.crg.cd_sync.clk,
             gtx.cd_tx.clk,
             gtx.cd_rx.clk)
 

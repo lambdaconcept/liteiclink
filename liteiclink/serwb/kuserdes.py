@@ -1,9 +1,9 @@
 # This file is Copyright (c) 2017-2019 Florent Kermarrec <florent@enjoy-digital.fr>
 # License: BSD
 
-from migen import *
-from migen.genlib.io import *
-from migen.genlib.misc import BitSlip, WaitTimer
+from nmigen.compat import *
+from nmigen.compat.genlib.io import *
+from nmigen.compat.genlib.misc import BitSlip, WaitTimer
 
 from litex.soc.interconnect import stream
 from litex.soc.cores.code_8b10b import Encoder, Decoder
@@ -33,8 +33,8 @@ class _KUSerdesClocking(Module):
                     p_IS_RST_INVERTED=0,
 
                     o_OQ=self.refclk,
-                    i_RST=ResetSignal("sys"),
-                    i_CLK=ClockSignal("sys4x"), i_CLKDIV=ClockSignal("sys"),
+                    i_RST=ResetSignal("sync"),
+                    i_CLK=ClockSignal("sys4x"), i_CLKDIV=ClockSignal("sync"),
                     i_D=converter.source.data
                 ),
                 DifferentialOutput(self.refclk, pads.clk_p, pads.clk_n)
@@ -74,8 +74,8 @@ class _KUSerdesTX(Module):
                 p_IS_CLK_INVERTED=0, p_IS_CLKDIV_INVERTED=0, p_IS_RST_INVERTED=0,
 
                 o_OQ=data,
-                i_RST=ResetSignal("sys"),
-                i_CLK=ClockSignal("sys4x"), i_CLKDIV=ClockSignal("sys"),
+                i_RST=ResetSignal("sync"),
+                i_CLK=ClockSignal("sys4x"), i_CLKDIV=ClockSignal("sync"),
                 i_D=datapath.source.data
             ),
             DifferentialOutput(data, pads.tx_p, pads.tx_n)
@@ -110,7 +110,7 @@ class _KUSerdesRX(Module):
                 p_DELAY_FORMAT="COUNT", p_DELAY_SRC="IDATAIN",
                 p_DELAY_TYPE="VARIABLE", p_DELAY_VALUE=0,
 
-                i_CLK=ClockSignal("sys"),
+                i_CLK=ClockSignal("sync"),
                 i_RST=self.delay_rst, i_LOAD=0,
                 i_INC=1, i_EN_VTC=0,
                 i_CE=self.delay_inc,
@@ -123,11 +123,11 @@ class _KUSerdesRX(Module):
                 p_DATA_WIDTH=8,
 
                 i_D=data_delayed,
-                i_RST=ResetSignal("sys"),
+                i_RST=ResetSignal("sync"),
                 i_FIFO_RD_CLK=0, i_FIFO_RD_EN=0,
                 i_CLK=ClockSignal("sys4x"),
                 i_CLK_B=ClockSignal("sys4x"), # locally inverted
-                i_CLKDIV=ClockSignal("sys"),
+                i_CLKDIV=ClockSignal("sync"),
                 o_Q=data_deserialized
             )
         ]

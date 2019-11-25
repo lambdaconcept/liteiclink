@@ -6,8 +6,8 @@
 import argparse
 import os
 
-from migen import *
-from migen.genlib.resetsync import AsyncResetSynchronizer
+from nmigen.compat import *
+from nmigen.compat.genlib.resetsync import AsyncResetSynchronizer
 
 from litex.build.generic_platform import *
 
@@ -34,11 +34,11 @@ _transceiver_io = [
 
 class _CRG(Module):
     def __init__(self, platform, sys_clk_freq):
-        self.clock_domains.cd_sys = ClockDomain()
+        self.clock_domains.cd_sync = ClockDomain()
 
         # # #
 
-        self.cd_sys.clk.attr.add("keep")
+        self.cd_sync.clk.attr.add("keep")
 
         # clk / rst
         clk100 = platform.request("clk100")
@@ -48,8 +48,8 @@ class _CRG(Module):
         # pll
         self.submodules.pll = pll = ECP5PLL()
         pll.register_clkin(clk100, 100e6)
-        pll.create_clkout(self.cd_sys, sys_clk_freq)
-        self.specials += AsyncResetSynchronizer(self.cd_sys, ~rst_n)
+        pll.create_clkout(self.cd_sync, sys_clk_freq)
+        self.specials += AsyncResetSynchronizer(self.cd_sync, ~rst_n)
 
 
 # SerDesTestSoC ------------------------------------------------------------------------------------
