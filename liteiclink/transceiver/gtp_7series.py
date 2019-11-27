@@ -3,14 +3,12 @@
 # License: BSD
 
 from nmigen.compat import *
-from nmigen.compat.genlib.cdc import MultiReg, PulseSynchronizer
+from nmigen.compat.genlib.cdc import MultiReg
+from porting.nmigen.compat.genlib.cdc import PulseSynchronizer
 from nmigen.compat.genlib.resetsync import AsyncResetSynchronizer
 
-from litex.soc.cores.clock import *
-from litex.soc.interconnect.csr import *
-from litex.soc.interconnect import stream
-from litex.soc.cores.prbs import PRBSTX, PRBSRX
-from litex.soc.cores.code_8b10b import Encoder, Decoder
+from porting.litex.soc.cores.prbs import PRBSTX, PRBSRX
+from porting.litex.soc.cores.code_8b10b import Encoder, Decoder
 
 from liteiclink.transceiver.gtp_7series_init import GTPTXInit, GTPRXInit
 from liteiclink.transceiver.clock_aligner import BruteforceClockAligner
@@ -149,7 +147,7 @@ CLKIN +----> /M  +-->       Charge Pump         +-> VCO +---> CLKOUT
         return r
 
 
-class GTP(Module, AutoCSR):
+class GTP(Module):
     def __init__(self, qpll, tx_pads, rx_pads, sys_clk_freq, data_width=20,
                  tx_buffer_enable=False, rx_buffer_enable=False,
                  clock_aligner=True, clock_aligner_comma=0b0101111100,
@@ -913,8 +911,7 @@ class GTP(Module, AutoCSR):
         )
 
         # TX clocking ------------------------------------------------------------------------------
-        tx_reset_deglitched = Signal()
-        tx_reset_deglitched.attr.add("no_retiming")
+        tx_reset_deglitched = Signal(attrs={"no_retiming": "true"})
         self.sync += tx_reset_deglitched.eq(~tx_init.done)
         self.clock_domains.cd_tx = ClockDomain()
 
@@ -947,8 +944,7 @@ class GTP(Module, AutoCSR):
             txoutclk_pll.create_clkout(self.cd_tx, self.tx_clk_freq)
 
         # RX clocking ------------------------------------------------------------------------------
-        rx_reset_deglitched = Signal()
-        rx_reset_deglitched.attr.add("no_retiming")
+        rx_reset_deglitched = Signal(attrs={"no_retiming": "true"})
         self.sync.tx += rx_reset_deglitched.eq(~rx_init.done)
         self.clock_domains.cd_rx = ClockDomain()
         self.specials += [

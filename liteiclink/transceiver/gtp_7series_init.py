@@ -4,8 +4,8 @@
 from math import ceil
 
 from nmigen.compat import *
-from nmigen.compat.genlib.cdc import MultiReg, PulseSynchronizer
-from nmigen.compat.genlib.misc import WaitTimer
+from nmigen.compat.genlib.cdc import MultiReg
+from porting.nmigen.compat.genlib.misc import WaitTimer
 
 from liteiclink.transceiver.common import *
 

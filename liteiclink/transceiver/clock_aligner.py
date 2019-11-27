@@ -5,7 +5,8 @@ from functools import reduce
 from operator import add
 
 from nmigen.compat import *
-from nmigen.compat.genlib.cdc import MultiReg, PulseSynchronizer
+from nmigen.compat.genlib.cdc import MultiReg
+from porting.nmigen.compat.genlib.cdc import PulseSynchronizer
 
 
 # Changes the phase of the transceiver RX clock to align the comma to
