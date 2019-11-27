@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 
-from nmigen.compat import *
-from nmigen.compat.genlib.resetsync import AsyncResetSynchronizer
+from nmigen import *
+from nmigen.lib.cdc import ResetSynchronizer
 
 from nmigen.build import *
 from nmigen.vendor.xilinx_7series import *
 from nmigen_boards.resources import *
 
-from porting.litex.soc.cores.clock import *
+from lib.soc.cores.rs232 import *
+from lib.soc.interconnect import stream
 
+from porting.litex.soc.cores.clock import S7PLL
 from liteiclink.transceiver.gtp_7series import GTPQuadPLL, GTP
 
 class Platform(Xilinx7SeriesPlatform):
@@ -49,36 +51,46 @@ class Platform(Xilinx7SeriesPlatform):
         return super().toolchain_prepare(fragment, name, **overrides, **kwargs)
 
 
-class _CRG(Module):
+class _CRG(Elaboratable):
     def __init__(self, clk, rst):
-        self.clock_domains.cd_sync = ClockDomain()
-        self.clock_domains.cd_clk125 = ClockDomain()
+        self.clk = clk
+        self.rst = rst
+
+    def elaborate(self, platform):
+        m = Module()
+
+        m.domains.sync = ClockDomain()
+        m.domains.clk125 = cd_clk125 = ClockDomain("clk125")
 
         # # #
 
-        self.comb += self.cd_sync.clk.eq(clk)
-        self.specials += AsyncResetSynchronizer(self.cd_sync, rst)
+        m.d.comb += ClockSignal().eq(self.clk)
+        m.submodules.reset_sync = ResetSynchronizer(self.rst, domain="sync")
 
-        self.submodules.pll = pll = S7PLL()
-        pll.register_clkin(clk.i, 100e6)
-        pll.create_clkout(self.cd_clk125, 125e6)
+        m.submodules.pll = pll = S7PLL()
+        pll.register_clkin(self.clk, 100e6)
+        pll.create_clkout(cd_clk125, 125e6)
+
+        return m
 
 
-class GTPTestTop(Module):
-    def __init__(self, platform):
+class GTPTestTop(Elaboratable):
+    def elaborate(self, platform):
+        m = Module()
+
         sys_clk_freq = int(100e6)
         clk100 = platform.request("clk100")
-        rst = platform.request("rst", 0)
-        self.submodules.crg = _CRG(clk100, rst)
+        rst = platform.request("rst")
+        m.submodules += _CRG(clk100.i, rst.i)
 
         # refclk
         refclk = Signal()
-        self.comb += refclk.eq(ClockSignal("clk125"))
+        m.d.comb += refclk.eq(ClockSignal("clk125"))
 
         # pll
         qpll = GTPQuadPLL(refclk, 125e6, 1.25e9)
         print(qpll)
-        self.submodules += qpll
+        m.submodules += qpll
 
         # gtp
         tx_pads = platform.request("pcie_tx", 0, dir="-")
@@ -88,13 +100,13 @@ class GTPTestTop(Module):
             clock_aligner=False,
             tx_buffer_enable=True,
             rx_buffer_enable=True)
-        self.submodules += gtp
+        m.submodules += gtp
 
         # led blink
         counter = Signal(32)
-        self.sync.tx += counter.eq(counter + 1)
+        m.d.tx += counter.eq(counter + 1)
 
-        self.comb += [
+        m.d.comb += [
             gtp.encoder.k[0].eq(1),
             gtp.encoder.d[0].eq((5 << 5) | 28),
             gtp.encoder.k[1].eq(0),
@@ -111,13 +123,15 @@ class GTPTestTop(Module):
         #     gtp.cd_tx.clk,
         #     gtp.cd_rx.clk)
 
-        self.comb += platform.request("led", 0).eq(gtp.decoders[1].d[0])
-        self.comb += platform.request("led", 1).eq(gtp.decoders[1].d[1])
+        m.d.comb += platform.request("led", 0).eq(gtp.decoders[1].d[0])
+        m.d.comb += platform.request("led", 1).eq(gtp.decoders[1].d[1])
+
+        return m
+
 
 def main():
     platform = Platform()
-    top = GTPTestTop(platform)
-    platform.build(top, name="pcie_screamer")
+    platform.build(GTPTestTop(), name="pcie_screamer")
 
 
 if __name__ == "__main__":
