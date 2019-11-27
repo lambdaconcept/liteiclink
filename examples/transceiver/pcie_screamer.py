@@ -1,53 +1,53 @@
 #!/usr/bin/env python3
 
-# This file is Copyright (c) 2017-2019 Florent Kermarrec <florent@enjoy-digital.fr>
-# License: BSD
-
-import sys
-
 from nmigen.compat import *
 from nmigen.compat.genlib.resetsync import AsyncResetSynchronizer
 
-from litex.build.generic_platform import *
-from litex.build.xilinx import XilinxPlatform
+from nmigen.build import *
+from nmigen.vendor.xilinx_7series import *
+from nmigen_boards.resources import *
 
-from litex.soc.cores.clock import *
-from litex.soc.integration.soc_core import *
-from litex.soc.integration.builder import *
+from porting.litex.soc.cores.clock import *
 
 from liteiclink.transceiver.gtp_7series import GTPQuadPLL, GTP
 
+class Platform(Xilinx7SeriesPlatform):
+    device      = "xc7a35t"
+    package     = "fgg484"
+    speed       = "2L"
+    default_clk = "clk100"
+    default_rst = "rst"
+    resources   = [
+        Resource("rst", 0, PinsN("AA1", dir="i"), Attrs(IOSTANDARD="LVCMOS33")),
+        Resource("clk100", 0, Pins("R4", dir="i"),
+                 Clock(100e6), Attrs(IOSTANDARD="LVCMOS33")),
 
-_io = [
-    ("clk100", 0, Pins("R4"), IOStandard("LVCMOS33")),
-    ("rst_n", Pins("AA1"), IOStandard("LVCMOS33")),
+        *LEDResources(pins="AB1 AB8", attrs=Attrs(IOSTANDARD="LVCMOS33")),
+        *ButtonResources(pins="AA1 AB6", attrs=Attrs(IOSTANDARD="LVCMOS33")),
 
-    ("user_led", 0, Pins("AB1"), IOStandard("LVCMOS33")),
-    ("user_led", 1, Pins("AB8"), IOStandard("LVCMOS33")),
+        UARTResource(0,
+            rx="AA6", tx="Y6",
+            attrs=Attrs(IOSTANDARD="LVCMOS33")
+        ),
 
-    ("user_btn", 0, Pins("AA1"), IOStandard("LVCMOS33")),
-    ("user_btn", 1, Pins("AB6"), IOStandard("LVCMOS33")),
+        Resource("pcie_tx", 0, DiffPairs("B6", "A6", dir="o")),
+        Resource("pcie_rx", 0, DiffPairs("B10", "A10", dir="i")),
+    ]
+    connectors  = []
 
-    ("serial", 0,
-        Subsignal("tx", Pins("Y6")),
-        Subsignal("rx", Pins("AA6")),
-        IOStandard("LVCMOS33")
-    ),
+    def toolchain_prepare(self, fragment, name, **kwargs):
+        overrides = {
+            "add_constraints":
+                "set_property SEVERITY {Warning} [get_drc_checks REQP-49]\n"
+                # XXX PO hardcoded below
+                "create_clock -name tx_clk -period 16.0 [get_nets tx_clk]\n"
+                "create_clock -name tx_clk -period 16.0 [get_nets rx_clk]\n"
+                "set_clock_groups -group [get_clocks -include_generated_clocks -of [get_nets crg_clk100_0__i]] -group [get_clocks -include_generated_clocks -of [get_nets tx_clk]] -asynchronous\n"
+                "set_clock_groups -group [get_clocks -include_generated_clocks -of [get_nets crg_clk100_0__i]] -group [get_clocks -include_generated_clocks -of [get_nets rx_clk]] -asynchronous\n"
+                "set_clock_groups -group [get_clocks -include_generated_clocks -of [get_nets tx_clk]] -group [get_clocks -include_generated_clocks -of [get_nets rx_clk]] -asynchronous\n"
+        }
+        return super().toolchain_prepare(fragment, name, **overrides, **kwargs)
 
-    ("pcie_tx", 0,
-        Subsignal("p", Pins("B6")),
-        Subsignal("n", Pins("A6")),
-    ),
-    ("pcie_rx", 0,
-        Subsignal("p", Pins("B10")),
-        Subsignal("n", Pins("A10")),
-    ),
-]
-
-
-class Platform(XilinxPlatform):
-    def __init__(self):
-        XilinxPlatform.__init__(self, "xc7a35t-fgg484-2", _io, toolchain="vivado")
 
 class _CRG(Module):
     def __init__(self, clk, rst):
@@ -60,22 +60,20 @@ class _CRG(Module):
         self.specials += AsyncResetSynchronizer(self.cd_sync, rst)
 
         self.submodules.pll = pll = S7PLL()
-        pll.register_clkin(clk, 100e6)
+        pll.register_clkin(clk.i, 100e6)
         pll.create_clkout(self.cd_clk125, 125e6)
 
 
-class GTPTestSoC(SoCCore):
+class GTPTestTop(Module):
     def __init__(self, platform):
         sys_clk_freq = int(100e6)
-        SoCCore.__init__(self, platform, sys_clk_freq, cpu_type=None)
         clk100 = platform.request("clk100")
-        rst = ~platform.request("user_btn", 0)
+        rst = platform.request("rst", 0)
         self.submodules.crg = _CRG(clk100, rst)
 
         # refclk
         refclk = Signal()
         self.comb += refclk.eq(ClockSignal("clk125"))
-        platform.add_platform_command("set_property SEVERITY {{Warning}} [get_drc_checks REQP-49]")
 
         # pll
         qpll = GTPQuadPLL(refclk, 125e6, 1.25e9)
@@ -83,8 +81,8 @@ class GTPTestSoC(SoCCore):
         self.submodules += qpll
 
         # gtp
-        tx_pads = platform.request("pcie_tx", 0)
-        rx_pads = platform.request("pcie_rx", 0)
+        tx_pads = platform.request("pcie_tx", 0, dir="-")
+        rx_pads = platform.request("pcie_rx", 0, dir="-")
         gtp = GTP(qpll, tx_pads, rx_pads, sys_clk_freq,
             data_width=20,
             clock_aligner=False,
@@ -103,31 +101,23 @@ class GTPTestSoC(SoCCore):
             gtp.encoder.d[1].eq(counter[26:]),
         ]
 
-        self.crg.cd_sync.clk.attr.add("keep")
-        gtp.cd_tx.clk.attr.add("keep")
-        gtp.cd_rx.clk.attr.add("keep")
-        platform.add_period_constraint(self.crg.cd_sync.clk, 1e9/100e6)
-        platform.add_period_constraint(gtp.cd_tx.clk, 1e9/gtp.tx_clk_freq)
-        platform.add_period_constraint(gtp.cd_rx.clk, 1e9/gtp.rx_clk_freq)
-        self.platform.add_false_path_constraints(
-            self.crg.cd_sync.clk,
-            gtp.cd_tx.clk,
-            gtp.cd_rx.clk)
+        # self.crg.cd_sync.clk.attr.add("keep")
+        # gtp.cd_tx.clk.attr.add("keep")
+        # gtp.cd_rx.clk.attr.add("keep")
+        # platform.add_period_constraint(gtp.cd_tx.clk, 1e9/gtp.tx_clk_freq)
+        # platform.add_period_constraint(gtp.cd_rx.clk, 1e9/gtp.rx_clk_freq)
+        # platform.add_false_path_constraints(
+        #     self.crg.cd_sync.clk,
+        #     gtp.cd_tx.clk,
+        #     gtp.cd_rx.clk)
 
-        self.comb += platform.request("user_led", 0).eq(gtp.decoders[1].d[0])
-        self.comb += platform.request("user_led", 1).eq(gtp.decoders[1].d[1])
-
+        self.comb += platform.request("led", 0).eq(gtp.decoders[1].d[0])
+        self.comb += platform.request("led", 1).eq(gtp.decoders[1].d[1])
 
 def main():
-    if "load" in sys.argv[1:]:
-        from litex.build.xilinx import VivadoProgrammer
-        prog = VivadoProgrammer()
-        prog.load_bitstream("build/gateware/pcie_screamer.bit")
-    else:
-        platform = Platform()
-        soc = GTPTestSoC(platform)
-        builder = Builder(soc, output_dir="build", compile_gateware=True)
-        vns = builder.build(build_name="pcie_screamer")
+    platform = Platform()
+    top = GTPTestTop(platform)
+    platform.build(top, name="pcie_screamer")
 
 
 if __name__ == "__main__":
