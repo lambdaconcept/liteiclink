@@ -28,7 +28,7 @@ class Platform(Xilinx7SeriesPlatform):
         *ButtonResources(pins="AA1 AB6", attrs=Attrs(IOSTANDARD="LVCMOS33")),
 
         UARTResource(0,
-            rx="AA6", tx="Y6",
+            rx="U1", tx="T1",
             attrs=Attrs(IOSTANDARD="LVCMOS33")
         ),
 
@@ -43,7 +43,7 @@ class Platform(Xilinx7SeriesPlatform):
                 "set_property SEVERITY {Warning} [get_drc_checks REQP-49]\n"
                 # XXX PO hardcoded below
                 "create_clock -name tx_clk -period 16.0 [get_nets tx_clk]\n"
-                "create_clock -name tx_clk -period 16.0 [get_nets rx_clk]\n"
+                "create_clock -name rx_clk -period 16.0 [get_nets rx_clk]\n"
                 "set_clock_groups -group [get_clocks -include_generated_clocks -of [get_nets crg_clk100_0__i]] -group [get_clocks -include_generated_clocks -of [get_nets tx_clk]] -asynchronous\n"
                 "set_clock_groups -group [get_clocks -include_generated_clocks -of [get_nets crg_clk100_0__i]] -group [get_clocks -include_generated_clocks -of [get_nets rx_clk]] -asynchronous\n"
                 "set_clock_groups -group [get_clocks -include_generated_clocks -of [get_nets tx_clk]] -group [get_clocks -include_generated_clocks -of [get_nets rx_clk]] -asynchronous\n"
@@ -100,18 +100,62 @@ class GTPTestTop(Elaboratable):
             clock_aligner=False,
             tx_buffer_enable=True,
             rx_buffer_enable=True)
+        gtp.add_stream_endpoints()
         m.submodules += gtp
 
-        # led blink
+        # uart
+        uart = RS232PHY(platform.request("uart"), sys_clk_freq, baudrate=115200)
+        m.submodules += uart
+
+        # cdctx
+        cdctx = stream.AsyncFIFO([("data", 8)], 8, r_domain="tx", w_domain="sync")
+        m.submodules += cdctx
+        m.d.comb += uart.source.connect(cdctx.sink)
+
+        # cdcrx
+        cdcrx = stream.AsyncFIFO([("data", 8)], 8, r_domain="sync", w_domain="rx")
+        m.submodules += cdcrx
+        m.d.comb += cdcrx.source.connect(uart.sink)
+
+        # counter
         counter = Signal(32)
         m.d.tx += counter.eq(counter + 1)
 
-        m.d.comb += [
-            gtp.encoder.k[0].eq(1),
-            gtp.encoder.d[0].eq((5 << 5) | 28),
-            gtp.encoder.k[1].eq(0),
-            gtp.encoder.d[1].eq(counter[26:]),
+        # tx path
+        with m.If(cdctx.source.valid):
+            m.d.comb += [
+                cdctx.source.ready.eq(1),
+                gtp.sink.valid.eq(1), # gtp.sink always ready
+                gtp.sink.ctrl.eq(0b00),
+                gtp.sink.data[0:8].eq(0),
+                gtp.sink.data[8:16].eq(cdctx.source.data),
+            ]
+        with m.Else():
+            # K28.5 and slow counter --> TX
+            m.d.comb += [
+                gtp.sink.valid.eq(1),
+                gtp.sink.ctrl.eq(0b01),
+                gtp.sink.data[0:8].eq((5 << 5) | 28),
+                gtp.sink.data[8:16].eq(counter[26:]),
+            ]
+
+        # rx path
+        m.d.rx += [
+            gtp.rx_align.eq(1),
+            gtp.source.ready.eq(1),
         ]
+        with m.If(gtp.source.ctrl == 0): # gtp.source always valid
+            m.d.rx += [
+                cdcrx.sink.valid.eq(1), # assume fifo ready
+                cdcrx.sink.data.eq(gtp.source.data[8:16]),
+            ]
+        with m.Else():
+            # RX (slow counter) --> Leds
+            m.d.rx += [
+                cdcrx.sink.valid.eq(0),
+                platform.request("led", 0).eq(gtp.source.data[8]),
+                platform.request("led", 1).eq(gtp.source.data[9]),
+            ]
 
         # self.crg.cd_sync.clk.attr.add("keep")
         # gtp.cd_tx.clk.attr.add("keep")
@@ -122,9 +166,6 @@ class GTPTestTop(Elaboratable):
         #     self.crg.cd_sync.clk,
         #     gtp.cd_tx.clk,
         #     gtp.cd_rx.clk)
-
-        m.d.comb += platform.request("led", 0).eq(gtp.decoders[1].d[0])
-        m.d.comb += platform.request("led", 1).eq(gtp.decoders[1].d[1])
 
         return m
 

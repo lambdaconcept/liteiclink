@@ -7,6 +7,7 @@ from nmigen.compat.genlib.cdc import MultiReg
 from porting.nmigen.compat.genlib.cdc import PulseSynchronizer
 from nmigen.compat.genlib.resetsync import AsyncResetSynchronizer
 
+from lib.soc.interconnect import stream
 from porting.litex.soc.cores.prbs import PRBSTX, PRBSRX
 from porting.litex.soc.cores.code_8b10b import Encoder, Decoder
 
