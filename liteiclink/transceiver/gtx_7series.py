@@ -940,8 +940,7 @@ class GTX(Module, AutoCSR):
             )
 
         # TX clocking ------------------------------------------------------------------------------
-        tx_reset_deglitched = Signal()
-        tx_reset_deglitched.attr.add("no_retiming")
+        tx_reset_deglitched = Signal(attrs={"no_retiming": "true"})
         self.sync += tx_reset_deglitched.eq(~tx_init.done)
         self.clock_domains.cd_tx = ClockDomain()
 
@@ -974,8 +973,7 @@ class GTX(Module, AutoCSR):
             txoutclk_pll.create_clkout(self.cd_tx, self.tx_clk_freq)
 
         # RX clocking ------------------------------------------------------------------------------
-        rx_reset_deglitched = Signal()
-        rx_reset_deglitched.attr.add("no_retiming")
+        rx_reset_deglitched = Signal(attrs={"no_retiming": "true"})
         self.sync.tx += rx_reset_deglitched.eq(~rx_init.done)
         self.clock_domains.cd_rx = ClockDomain()
         self.specials += [

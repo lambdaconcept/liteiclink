@@ -804,8 +804,7 @@ class GTH(Module, AutoCSR):
         )
 
         # TX clocking ------------------------------------------------------------------------------
-        tx_reset_deglitched = Signal()
-        tx_reset_deglitched.attr.add("no_retiming")
+        tx_reset_deglitched = Signal(attrs={"no_retiming": "true"})
         self.sync += tx_reset_deglitched.eq(~tx_init.done)
         self.clock_domains.cd_tx = ClockDomain()
         if not tx_buffer_enable:
@@ -820,8 +819,7 @@ class GTH(Module, AutoCSR):
         ]
 
         # RX clocking ------------------------------------------------------------------------------
-        rx_reset_deglitched = Signal()
-        rx_reset_deglitched.attr.add("no_retiming")
+        rx_reset_deglitched = Signal(attrs={"no_retiming": "true"})
         self.sync.tx += rx_reset_deglitched.eq(~rx_init.done)
         self.clock_domains.cd_rx = ClockDomain()
         self.specials += [
