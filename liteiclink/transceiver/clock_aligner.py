@@ -55,9 +55,8 @@ class BruteforceClockAligner(Module):
         self.submodules += checks_reset
 
         comma_n = ~comma & 0b1111111111
-        comma_seen_rxclk = Signal()
+        comma_seen_rxclk = Signal(attrs={"no_retiming": "true"})
         comma_seen = Signal()
-        comma_seen_rxclk.attr.add("no_retiming")
         self.specials += MultiReg(comma_seen_rxclk, comma_seen)
         self.sync.rx += \
             If(checks_reset.o,
@@ -66,9 +65,8 @@ class BruteforceClockAligner(Module):
                 comma_seen_rxclk.eq(1)
             )
 
-        error_seen_rxclk = Signal()
+        error_seen_rxclk = Signal(attrs={"no_retiming": "true"})
         error_seen = Signal()
-        error_seen_rxclk.attr.add("no_retiming")
         self.specials += MultiReg(error_seen_rxclk, error_seen)
         rx1cnt = Signal(max=11)
         self.sync.rx += [

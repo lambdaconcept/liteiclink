@@ -2,14 +2,13 @@
 # License: BSD
 
 from nmigen.compat import *
-from nmigen.compat.genlib.misc import WaitTimer
-from nmigen.compat.genlib.cdc import MultiReg, PulseSynchronizer
+from nmigen.compat.genlib.cdc import MultiReg
+from porting.nmigen.compat.genlib.cdc import PulseSynchronizer
 from nmigen.compat.genlib.resetsync import AsyncResetSynchronizer
 
-from litex.soc.interconnect.csr import *
-from litex.soc.interconnect import stream
-from litex.soc.cores.prbs import PRBSTX, PRBSRX
-from litex.soc.cores.code_8b10b import Encoder, Decoder
+from lib.soc.interconnect import stream
+from porting.litex.soc.cores.prbs import PRBSTX, PRBSRX
+from porting.litex.soc.cores.code_8b10b import Encoder, Decoder
 
 from liteiclink.transceiver.clock_aligner import BruteforceClockAligner
 
@@ -157,7 +156,7 @@ class SerDesECP5SCIReconfig(Module):
 
 # SerDesECP5 ---------------------------------------------------------------------------------------
 
-class SerDesECP5(Module, AutoCSR):
+class SerDesECP5(Module):
     def __init__(self, pll, tx_pads, rx_pads, dual=0, channel=0, data_width=20,
         clock_aligner=True, clock_aligner_comma=0b0101111100):
         assert (data_width == 20)
@@ -192,7 +191,8 @@ class SerDesECP5(Module, AutoCSR):
         self.nwords = nwords = data_width//10
 
         self.submodules.encoder  = ClockDomainsRenamer("tx")(Encoder(nwords, True))
-        self.submodules.decoders = [ClockDomainsRenamer("rx")(Decoder(True)) for _ in range(nwords)]
+        self.decoders = [ClockDomainsRenamer("rx")(Decoder(True)) for _ in range(nwords)]
+        self.submodules += self.decoders
 
         # Transceiver direct clock outputs (useful to specify clock constraints)
         self.txoutclk = Signal()
@@ -244,7 +244,8 @@ class SerDesECP5(Module, AutoCSR):
         self.clock_domains.cd_rx = ClockDomain()
         self.comb += self.cd_rx.clk.eq(self.rxoutclk)
         self.specials += AsyncResetSynchronizer(self.cd_rx, ResetSignal("sync"))
-        self.specials += MultiReg(~self.cd_rx.rst, self.rx_ready)
+        if not clock_aligner:
+            self.specials += MultiReg(~self.cd_rx.rst, self.rx_ready)
 
         # DCU instance -----------------------------------------------------------------------------
         self.serdes_params = dict(
@@ -562,7 +563,9 @@ class SerDesECP5(Module, AutoCSR):
         for k, v in self.serdes_params.items():
             k = k.replace("CHX", "CH{}".format(self.channel))
             serdes_params[k] = v
-        self.specials.dcu0 = Instance("DCUA", **serdes_params)
-        self.dcu0.attr.add(("LOC", "DCU{}".format(self.dual)))
-        self.dcu0.attr.add(("CHAN", "CH{}".format(self.channel)))
-        self.dcu0.attr.add(("BEL", "X42/Y71/DCU"))
+        attrs = dict(
+            a_LOC   = "DCU{}".format(self.dual),
+            a_CHAN  = "CH{}".format(self.channel),
+            a_BEL   = "X42/Y71/DCU",
+        )
+        self.specials.dcu0 = Instance("DCUA", **serdes_params, **attrs)

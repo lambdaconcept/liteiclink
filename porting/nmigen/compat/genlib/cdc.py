@@ -1,4 +1,5 @@
 from nmigen.compat import *
+from nmigen.compat.genlib.cdc import MultiReg
 
 class PulseSynchronizer(Module):
     def __init__(self, idomain, odomain):
