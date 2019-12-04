@@ -42,10 +42,10 @@ class Platform(Xilinx7SeriesPlatform):
             "add_constraints":
                 "set_property SEVERITY {Warning} [get_drc_checks REQP-49]\n"
                 # XXX PO hardcoded below
-                "create_clock -name tx_clk -period 16.0 [get_nets tx_clk]\n"
-                "create_clock -name rx_clk -period 16.0 [get_nets rx_clk]\n"
-                "set_clock_groups -group [get_clocks -include_generated_clocks -of [get_nets crg_clk100_0__i]] -group [get_clocks -include_generated_clocks -of [get_nets tx_clk]] -asynchronous\n"
-                "set_clock_groups -group [get_clocks -include_generated_clocks -of [get_nets crg_clk100_0__i]] -group [get_clocks -include_generated_clocks -of [get_nets rx_clk]] -asynchronous\n"
+                "create_clock -name tx_clk -period 4.0 [get_nets tx_clk]\n"
+                "create_clock -name rx_clk -period 4.0 [get_nets rx_clk]\n"
+                "set_clock_groups -group [get_clocks -include_generated_clocks -of [get_nets U$$0_clk100_0__i]] -group [get_clocks -include_generated_clocks -of [get_nets tx_clk]] -asynchronous\n"
+                "set_clock_groups -group [get_clocks -include_generated_clocks -of [get_nets U$$0_clk100_0__i]] -group [get_clocks -include_generated_clocks -of [get_nets rx_clk]] -asynchronous\n"
                 "set_clock_groups -group [get_clocks -include_generated_clocks -of [get_nets tx_clk]] -group [get_clocks -include_generated_clocks -of [get_nets rx_clk]] -asynchronous\n"
         }
         return super().toolchain_prepare(fragment, name, **overrides, **kwargs)
@@ -88,7 +88,7 @@ class GTPTestTop(Elaboratable):
         m.d.comb += refclk.eq(ClockSignal("clk125"))
 
         # pll
-        qpll = GTPQuadPLL(refclk, 125e6, 1.25e9)
+        qpll = GTPQuadPLL(refclk, 125e6, 5e9)
         print(qpll)
         m.submodules += qpll
 
