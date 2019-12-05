@@ -10,6 +10,9 @@ from nmigen.build import *
 from nmigen.vendor.lattice_ecp5 import *
 from nmigen_boards.resources import *
 
+from lib.soc.cores.rs232 import *
+from lib.soc.interconnect import stream
+
 from porting.litex.soc.cores.clock import ECP5PLL
 from liteiclink.transceiver.serdes_ecp5 import SerDesECP5PLL, SerDesECP5
 
@@ -100,27 +103,61 @@ class SerDesTestTop(Elaboratable):
         # platform.add_period_constraint(serdes.txoutclk, 1e9/serdes.tx_clk_freq)
         # platform.add_period_constraint(serdes.rxoutclk, 1e9/serdes.rx_clk_freq)
 
+        # Uart -------------------------------------------------------------------------------------
+        uart = RS232PHY(platform.request("uart"), sys_clk_freq, baudrate=115200)
+        m.submodules += uart
+
+        # CDCtx ------------------------------------------------------------------------------------
+        cdctx = stream.AsyncFIFO([("data", 8)], 8, r_domain="tx", w_domain="sync")
+        m.submodules += cdctx
+        m.d.comb += uart.source.connect(cdctx.sink)
+
+        # CDCrx ------------------------------------------------------------------------------------
+        cdcrx = stream.AsyncFIFO([("data", 8)], 8, r_domain="sync", w_domain="rx")
+        m.submodules += cdcrx
+        m.d.comb += cdcrx.source.connect(uart.sink)
+
         # Test -------------------------------------------------------------------------------------
         counter = Signal(32)
         m.d.tx += counter.eq(counter + 1)
 
-        # K28.5 and slow counter --> TX
-        m.d.comb += [
-            serdes.sink.valid.eq(1),
-            serdes.sink.ctrl.eq(0b01),
-            serdes.sink.data[0:8].eq((5 << 5) | 28),
-            serdes.sink.data[8:16].eq(counter[26:]),
-        ]
+        # TX path ----------------------------------------------------------------------------------
+        with m.If(cdctx.source.valid):
+            m.d.comb += [
+                cdctx.source.ready.eq(1),
+                serdes.sink.valid.eq(1), # serdes.sink always ready
+                serdes.sink.ctrl.eq(0b00),
+                serdes.sink.data[0:8].eq(0),
+                serdes.sink.data[8:16].eq(cdctx.source.data),
+            ]
+        with m.Else():
+            # K28.5 and slow counter --> TX
+            m.d.comb += [
+                serdes.sink.valid.eq(1),
+                serdes.sink.ctrl.eq(0b01),
+                serdes.sink.data[0:8].eq((5 << 5) | 28),
+                serdes.sink.data[8:16].eq(counter[26:]),
+            ]
 
-        # RX (slow counter) --> Leds
+        # RX path ----------------------------------------------------------------------------------
         m.d.rx += [
             serdes.rx_align.eq(1),
             serdes.source.ready.eq(1),
-            platform.request("led", 4).eq(serdes.source.data[ 8]),
-            platform.request("led", 5).eq(serdes.source.data[ 9]),
-            platform.request("led", 6).eq(serdes.source.data[10]),
-            platform.request("led", 7).eq(serdes.source.data[11]),
         ]
+        with m.If(serdes.source.ctrl == 0): # serdes.source always valid
+            m.d.rx += [
+                cdcrx.sink.valid.eq(1), # assume fifo ready
+                cdcrx.sink.data.eq(serdes.source.data[8:16]),
+            ]
+        with m.Else():
+            # RX (slow counter) --> Leds
+            m.d.rx += [
+                cdcrx.sink.valid.eq(0),
+                platform.request("led", 4).eq(serdes.source.data[ 8]),
+                platform.request("led", 5).eq(serdes.source.data[ 9]),
+                platform.request("led", 6).eq(serdes.source.data[10]),
+                platform.request("led", 7).eq(serdes.source.data[11]),
+            ]
 
         # Leds -------------------------------------------------------------------------------------
         sys_counter = Signal(32)
