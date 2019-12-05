@@ -32,8 +32,8 @@ class Platform(LatticeECP5Platform):
             attrs=Attrs(IO_TYPE="LVCMOS33", PULLMODE="UP")
         ),
 
-        Resource("pcie_tx", 0, DiffPairs("W4", "W5", dir="o")), # , Attrs(IO_TYPE="LVDS")),
-        Resource("pcie_rx", 0, DiffPairs("Y5", "Y6", dir="i")), # , Attrs(IO_TYPE="LVDS")),
+        Resource("pcie_tx", 0, DiffPairs("W4", "W5", dir="o")),
+        Resource("pcie_rx", 0, DiffPairs("Y5", "Y6", dir="i")),
     ]
     connectors  = []
 
@@ -58,7 +58,7 @@ class _CRG(Elaboratable):
         # clk / rst
         clk100 = platform.request("clk100")
         rst = platform.request("rst")
-        # platform.add_period_constraint(clk100, 1e9/100e6) # XXX PO
+        # platform.add_period_constraint(clk100, 1e9/100e6)
 
         # pll
         m.submodules.pll = pll = ECP5PLL()
@@ -81,27 +81,12 @@ class SerDesTestTop(Elaboratable):
     def elaborate(self, platform):
         m = Module()
 
-        #   # CRG --------------------------------------------------------------------------------------
+        # CRG --------------------------------------------------------------------------------------
         sys_clk_freq = int(100e6)
         refclk_freq = int(200e6)
         m.submodules.crg = _CRG(platform, sys_clk_freq, refclk_freq)
 
-        #   # SerDes RefClk ----------------------------------------------------------------------------
-        #   # refclk_pads = platform.request("refclk", 1)
-        #   # self.comb += platform.request("refclk_en").eq(1)
-        #   # self.comb += platform.request("refclk_rst_n").eq(1)
-        #   # refclk = Signal()
-        #   # self.specials.extref0 = Instance("EXTREFB",
-        #   #     i_REFCLKP=refclk_pads.p,
-        #   #     i_REFCLKN=refclk_pads.n,
-        #   #     o_REFCLKO=refclk,
-        #   #     p_REFCK_PWDNB="0b1",
-        #   #     p_REFCK_RTERM="0b1", # 100 Ohm
-        #   # )
-        #   # self.extref0.attr.add(("LOC", "EXTREF0"))
-
         # SerDes PLL -------------------------------------------------------------------------------
-        # serdes_pll = SerDesECP5PLL(refclk, refclk_freq=156.25e6, linerate=1.25e9)
         serdes_pll = SerDesECP5PLL(ClockSignal("ref"), refclk_freq=refclk_freq, linerate=5e9)
         m.submodules += serdes_pll
 
