@@ -195,6 +195,7 @@ class GTP(Module):
         # Control/Status CDC
         tx_produce_square_wave = Signal()
         tx_produce_pattern     = Signal()
+        tx_pattern             = Signal(20)
         tx_prbs_config         = Signal(2)
 
         rx_prbs_config = Signal(2)
@@ -203,6 +204,7 @@ class GTP(Module):
         self.specials += [
             MultiReg(self.tx_produce_square_wave, tx_produce_square_wave, "tx"),
             MultiReg(self.tx_produce_pattern, tx_produce_pattern, "tx"),
+            MultiReg(self.tx_pattern, tx_pattern, "tx"),
             MultiReg(self.tx_prbs_config, tx_prbs_config, "tx"),
         ]
 
@@ -962,7 +964,7 @@ class GTP(Module):
                 # square wave @ linerate/data_width for scope observation
                 txdata.eq(Signal(data_width, reset=(1<<(data_width//2))-1))
             ).Elif(tx_produce_pattern,
-                txdata.eq(self.tx_pattern)
+                txdata.eq(tx_pattern)
             ).Else(
                 txdata.eq(self.tx_prbs.o)
             )

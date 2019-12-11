@@ -3,14 +3,13 @@
 
 from nmigen.compat import *
 from nmigen.compat.genlib.cdc import MultiReg
+from porting.nmigen.compat.genlib.misc import WaitTimer
 from porting.nmigen.compat.genlib.cdc import PulseSynchronizer
 from nmigen.compat.genlib.resetsync import AsyncResetSynchronizer
 
 from lib.soc.interconnect import stream
 from porting.litex.soc.cores.prbs import PRBSTX, PRBSRX
 from porting.litex.soc.cores.code_8b10b import Encoder, Decoder
-
-from liteiclink.transceiver.clock_aligner import BruteforceClockAligner
 
 # SerDesECP5PLL ------------------------------------------------------------------------------------
 
@@ -22,7 +21,7 @@ class SerDesECP5PLL(Module):
     @staticmethod
     def compute_config(refclk_freq, linerate):
         for mult in [8, 10, 16, 20, 25]:
-            current_linerate = refclk_freq*mult # *2 # FIXME: understand x2
+            current_linerate = refclk_freq*mult
             if current_linerate == linerate:
                 return {
                     "mult":       mult,
@@ -91,8 +90,10 @@ class SerDesECP5SCI(Module):
 
 class SerDesECP5SCIReconfig(Module):
     def __init__(self, serdes):
-        self.loopback = Signal()
-        self.tx_idle  = Signal()
+        self.loopback    = Signal()
+        self.rx_polarity = Signal()
+        self.tx_idle     = Signal()
+        self.tx_polarity = Signal()
 
         # # #
 
@@ -104,7 +105,29 @@ class SerDesECP5SCIReconfig(Module):
 
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            NextState("READ-CH_02"),
+            NextState("READ-CH_01"),
+        )
+        fsm.act("READ-CH_01",
+            sci.chan_sel.eq(1),
+            sci.re.eq(1),
+            sci.adr.eq(0x01),
+            If(~first & sci.done,
+                sci.re.eq(0),
+                NextValue(data, sci.dat_r),
+                NextState("WRITE-CH_01"),
+            )
+        )
+        fsm.act("WRITE-CH_01",
+            sci.chan_sel.eq(1),
+            sci.we.eq(1),
+            sci.adr.eq(0x01),
+            sci.dat_w.eq(data),
+            sci.dat_w[0].eq(self.rx_polarity),
+            sci.dat_w[1].eq(self.tx_polarity),
+            If(~first & sci.done,
+                sci.we.eq(0),
+                NextState("READ-CH_02")
+            )
         )
         fsm.act("READ-CH_02",
             sci.chan_sel.eq(1),
@@ -124,25 +147,27 @@ class SerDesECP5SCIReconfig(Module):
             sci.dat_w[6].eq(self.tx_idle),  # pcie_ei_en
             If(~first & sci.done,
                 sci.we.eq(0),
-                NextState("READ-CH_04")
+                NextState("READ-CH_15")
             )
         )
-        fsm.act("READ-CH_04",
+        fsm.act("READ-CH_15",
             sci.chan_sel.eq(1),
             sci.re.eq(1),
-            sci.adr.eq(0x04),
+            sci.adr.eq(0x15),
             If(~first & sci.done,
                 sci.re.eq(0),
                 NextValue(data, sci.dat_r),
-                NextState("WRITE-CH_04"),
+                NextState("WRITE-CH_15"),
             )
         )
-        fsm.act("WRITE-CH_04",
+        fsm.act("WRITE-CH_15",
             sci.chan_sel.eq(1),
             sci.we.eq(1),
-            sci.adr.eq(0x04),
+            sci.adr.eq(0x15),
             sci.dat_w.eq(data),
-            sci.dat_w[0].eq(self.loopback),  # sb_loopback
+            If(self.loopback,
+                sci.dat_w[0:4].eq(0b0001) # lb_ctl
+            ),
             If(~first & sci.done,
                 sci.we.eq(0),
                 NextState("IDLE")
@@ -154,11 +179,76 @@ class SerDesECP5SCIReconfig(Module):
         self.sync += last_fsm_state.eq(fsm.state)
         self.comb += first.eq(fsm.state != last_fsm_state)
 
+# SerdesRXInit -------------------------------------------------------------------------------------
+
+class SerdesRXInit(Module):
+    def __init__(self, tx_lol, rx_lol, rx_los, rx_lsm):
+        self.rrst        = Signal()
+        self.lane_rx_rst = Signal()
+
+        # # #
+
+        _tx_lol      = Signal()
+        _rx_lol      = Signal()
+        _rx_los      = Signal()
+        _rx_lsm      = Signal()
+        _rx_lsm_seen = Signal()
+        self.specials += [
+            MultiReg(tx_lol, _tx_lol),
+            MultiReg(rx_lol, _rx_lol),
+            MultiReg(rx_los, _rx_los),
+            MultiReg(rx_lsm, _rx_lsm),
+        ]
+
+        timer = WaitTimer(int(4e5))
+        self.submodules += timer
+
+        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        fsm.act("IDLE",
+            self.lane_rx_rst.eq(1),
+            If(~_tx_lol,
+                NextState("RESET-ALL")
+            )
+        )
+        fsm.act("RESET-ALL",
+            self.rrst.eq(1),
+            self.lane_rx_rst.eq(1),
+            NextState("RESET-PCS")
+        )
+        fsm.act("RESET-PCS",
+            self.lane_rx_rst.eq(1),
+            timer.wait.eq(~_rx_lol & ~_rx_los),
+            If(timer.done,
+                timer.wait.eq(0),
+                NextValue(_rx_lsm_seen, 0),
+                NextState("CHECK-LSM")
+            )
+        )
+        fsm.act("CHECK-LSM",
+            NextValue(_rx_lsm_seen, _rx_lsm_seen | _rx_lsm),
+            timer.wait.eq(1),
+            If(_rx_lsm_seen & ~_rx_lsm,
+                NextState("IDLE")
+            ),
+            If(timer.done,
+                If(_rx_lsm,
+                    NextState("READY")
+                ).Else(
+                    NextState("IDLE")
+                )
+            )
+        )
+        fsm.act("READY",
+            If(_tx_lol | _rx_lol | _rx_los,
+                NextState("IDLE")
+            )
+        )
+
 # SerDesECP5 ---------------------------------------------------------------------------------------
 
 class SerDesECP5(Module):
     def __init__(self, pll, tx_pads, rx_pads, dual=0, channel=0, data_width=20,
-        clock_aligner=True, clock_aligner_comma=0b0101111100):
+        tx_polarity=0, rx_polarity=0):
         assert (data_width == 20)
         assert dual in [0, 1]
         assert channel in [0, 1]
@@ -184,7 +274,7 @@ class SerDesECP5(Module):
         self.rx_idle                = Signal()
 
         # Loopback
-        self.loopback               = Signal()
+        self.loopback               = Signal() # FIXME: reconfigure lb_ctl to 0b0001 but does not seem enough
 
         # # #
 
@@ -208,7 +298,6 @@ class SerDesECP5(Module):
         rx_align   = Signal()
         rx_data    = Signal(20)
         rx_bus     = Signal(24)
-        rx_restart = Signal()
 
         tx_lol     = Signal()
         tx_data    = Signal(20)
@@ -217,6 +306,7 @@ class SerDesECP5(Module):
         # Control/Status CDC -----------------------------------------------------------------------
         tx_produce_square_wave = Signal()
         tx_produce_pattern     = Signal()
+        tx_pattern             = Signal(20)
         tx_prbs_config         = Signal(2)
 
         rx_prbs_config = Signal(2)
@@ -225,7 +315,8 @@ class SerDesECP5(Module):
         self.specials += [
             MultiReg(self.tx_produce_square_wave, tx_produce_square_wave, "tx"),
             MultiReg(self.tx_produce_pattern, tx_produce_pattern, "tx"),
-            MultiReg(self.tx_prbs_config, tx_prbs_config, "tx")
+            MultiReg(self.tx_pattern, tx_pattern, "tx"),
+            MultiReg(self.tx_prbs_config, tx_prbs_config, "tx"),
         ]
 
         self.specials += [
@@ -244,8 +335,11 @@ class SerDesECP5(Module):
         self.clock_domains.cd_rx = ClockDomain()
         self.comb += self.cd_rx.clk.eq(self.rxoutclk)
         self.specials += AsyncResetSynchronizer(self.cd_rx, ResetSignal("sync"))
-        if not clock_aligner:
-            self.specials += MultiReg(~self.cd_rx.rst, self.rx_ready)
+        self.specials += MultiReg(~self.cd_rx.rst, self.rx_ready)
+
+
+        # DCU init ---------------------------------------------------------------------------------
+        self.submodules.rx_init = rx_init = SerdesRXInit(tx_lol, rx_lol, rx_los, rx_lsm)
 
         # DCU instance -----------------------------------------------------------------------------
         self.serdes_params = dict(
@@ -262,7 +356,6 @@ class SerDesECP5(Module):
             # DCU — reset
             i_D_FFC_MACRO_RST       = ResetSignal("sync"),
             i_D_FFC_DUAL_RST        = ResetSignal("sync"),
-            i_D_FFC_TRST            = ResetSignal("sync"),
 
             # DCU — clocking
             i_D_REFCLKI             = pll.refclk,
@@ -322,13 +415,12 @@ class SerDesECP5(Module):
             i_CHX_FFC_RXPWDNB       = 1,
 
             # CHX RX ­— reset
-            i_CHX_FFC_RRST          = ~self.rx_enable | rx_restart,
-            i_CHX_FFC_LANE_RX_RST   = ~self.rx_enable | rx_restart,
+            i_CHX_FFC_RRST          = ~self.rx_enable | rx_init.rrst,
+            i_CHX_FFC_LANE_RX_RST   = ~self.rx_enable | rx_init.lane_rx_rst,
 
             # CHX RX ­— input
             i_CHX_HDINP             = rx_pads.p,
             i_CHX_HDINN             = rx_pads.n,
-            i_CHX_FFC_SB_INV_RX     = 0,
 
             p_CHX_REQ_EN            = "0b0",    # Enable equalizer
             p_CHX_RX_RATE_SEL       = "0d10",   # Equalizer  pole position
@@ -392,19 +484,24 @@ class SerDesECP5(Module):
             # CHX RX — loss of lock
             o_CHX_FFS_RLOL          = rx_lol,
 
+            # CHx_RXLSM? CHx_RXWA?
+
             # CHX RX — link state machine
             i_CHX_FFC_SIGNAL_DETECT = rx_align,
             o_CHX_FFS_LS_SYNC_STATUS= rx_lsm,
             p_CHX_ENABLE_CG_ALIGN   = "0b1",
-            p_CHX_UDF_COMMA_MASK    = "0x3ff",  # compare all 10 bits
-            p_CHX_UDF_COMMA_A       = "0x283",  # K28.5 inverted
-            p_CHX_UDF_COMMA_B       = "0x17C",  # K28.5
+            p_CHX_UDF_COMMA_MASK    = "0x0ff",        # compare the 8 lsbs
+            p_CHX_UDF_COMMA_A       = "0b0000000011", # K28.1, K28.5 and K28.7
+            p_CHX_UDF_COMMA_B       = "0b0001111100", # K28.1, K28.5 and K28.7
 
             p_CHX_CTC_BYPASS        = "0b1",    # bypass CTC FIFO
             p_CHX_MIN_IPG_CNT       = "0b11",   # minimum interpacket gap of 4
-            p_CHX_MATCH_2_ENABLE    = "0b1",    # 4 character skip matching
-            p_CHX_CC_MATCH_3        = "0x1BC",  # D0.0
-            p_CHX_CC_MATCH_4        = "0x000",  # D0.0
+            p_CHX_MATCH_2_ENABLE    = "0b0",    # 2 character skip matching
+            p_CHX_MATCH_4_ENABLE    = "0b0",    # 4 character skip matching
+            p_CHX_CC_MATCH_1        = "0x000",
+            p_CHX_CC_MATCH_2        = "0x000",
+            p_CHX_CC_MATCH_3        = "0x000",
+            p_CHX_CC_MATCH_4        = "0x000",
 
             # CHX RX — data
             **{"o_CHX_FF_RX_D_%d" % n: rx_bus[n] for n in range(rx_bus.nbits)},
@@ -415,6 +512,7 @@ class SerDesECP5(Module):
             i_CHX_FFC_TXPWDNB       = 1,
 
             # CHX TX ­— reset
+            i_D_FFC_TRST            = ~self.tx_enable,
             i_CHX_FFC_LANE_TX_RST   = ~self.tx_enable,
 
             # CHX TX ­— output
@@ -461,6 +559,8 @@ class SerDesECP5(Module):
         self.submodules.sci_reconfig = sci_reconfig
         self.comb += sci_reconfig.loopback.eq(self.loopback)
         self.comb += sci_reconfig.tx_idle.eq(self.tx_idle)
+        self.comb += sci_reconfig.rx_polarity.eq(rx_polarity)
+        self.comb += sci_reconfig.tx_polarity.eq(tx_polarity)
 
         # TX Datapath and PRBS ---------------------------------------------------------------------
         self.submodules.tx_prbs = ClockDomainsRenamer("tx")(PRBSTX(data_width, True))
@@ -471,7 +571,7 @@ class SerDesECP5(Module):
                 # square wave @ linerate/data_width for scope observation
                 tx_data.eq(Signal(data_width, reset=(1<<(data_width//2))-1))
             ).Elif(tx_produce_pattern,
-                tx_data.eq(self.tx_pattern)
+                tx_data.eq(tx_pattern)
             ).Else(
                 tx_data.eq(self.tx_prbs.o)
             ),
@@ -490,19 +590,6 @@ class SerDesECP5(Module):
         for i in range(nwords):
             self.sync.rx += self.decoders[i].input.eq(rx_data[10*i:10*(i+1)])
         self.comb += self.rx_prbs.i.eq(rx_data)
-
-        # Clock Aligner ----------------------------------------------------------------------------
-        if clock_aligner:
-            clock_aligner = BruteforceClockAligner(clock_aligner_comma, self.tx_clk_freq)
-            self.submodules.clock_aligner = clock_aligner
-            ps_restart = PulseSynchronizer("tx", "sync")
-            self.submodules += ps_restart
-            self.comb += [
-                clock_aligner.rxdata.eq(rx_data),
-                ps_restart.i.eq(clock_aligner.restart),
-                rx_restart.eq((ps_restart.o & rx_align) | ~self.rx_enable),
-            ]
-            self.specials += MultiReg(clock_aligner.ready, self.rx_ready)
 
     def add_stream_endpoints(self):
         self.sink   =   sink = stream.Endpoint([("data", self.nwords*8), ("ctrl", self.nwords)])

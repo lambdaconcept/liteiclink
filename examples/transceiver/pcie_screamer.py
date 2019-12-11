@@ -174,6 +174,5 @@ def main():
     platform = Platform()
     platform.build(GTPTestTop(), name="pcie_screamer")
 
-
 if __name__ == "__main__":
     main()
