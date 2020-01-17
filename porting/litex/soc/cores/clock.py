@@ -30,7 +30,8 @@ class XilinxClocking(Module):
 
     def register_clkin(self, clkin, freq):
         self.clkin = Signal()
-        if isinstance(clkin, (Signal, ClockSignal)):
+        from nmigen.hdl.ast import Signal as NativeSignal
+        if isinstance(clkin, (Signal, ClockSignal, NativeSignal)):
             self.comb += self.clkin.eq(clkin)
         elif isinstance(clkin, Record):
             self.specials += DifferentialInput(clkin.p, clkin.n, self.clkin)
