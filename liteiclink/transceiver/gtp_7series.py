@@ -914,7 +914,7 @@ class GTP(Module):
         )
 
         # TX clocking ------------------------------------------------------------------------------
-        tx_reset_deglitched = Signal(attrs={"no_retiming": "true"})
+        tx_reset_deglitched = Signal(attr={"no_retiming": "true"})
         self.sync += tx_reset_deglitched.eq(~tx_init.done)
         self.clock_domains.cd_tx = ClockDomain()
 
@@ -947,7 +947,7 @@ class GTP(Module):
             txoutclk_pll.create_clkout(self.cd_tx, self.tx_clk_freq)
 
         # RX clocking ------------------------------------------------------------------------------
-        rx_reset_deglitched = Signal(attrs={"no_retiming": "true"})
+        rx_reset_deglitched = Signal(attr={"no_retiming": "true"})
         self.sync.tx += rx_reset_deglitched.eq(~rx_init.done)
         self.clock_domains.cd_rx = ClockDomain()
         self.specials += [
