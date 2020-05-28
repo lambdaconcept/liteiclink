@@ -152,7 +152,8 @@ class ECP5PLL(Module):
         assert freq >= clki_freq_min
         assert freq <= clki_freq_max
         self.clkin = Signal()
-        if isinstance(clkin, (Signal, ClockSignal)):
+        from nmigen.hdl.ast import Signal as NativeSignal
+        if isinstance(clkin, (Signal, ClockSignal, NativeSignal)):
             self.comb += self.clkin.eq(clkin)
         else:
             raise ValueError
