@@ -15,7 +15,7 @@ from liteiclink.transceiver.serdes_ecp5 import SerDesECP5PLL, SerDesECP5
 
 
 class ECPIX5Platform(LatticeECP5Platform):
-    device      = "LFE5UM5G-45F"
+    device      = "LFE5UM5G-85F" # XXX
     package     = "BG554"
     speed       = "8"
     default_clk = "clk100"
@@ -134,8 +134,13 @@ class ECPIX5Platform(LatticeECP5Platform):
         ),
 
         # XXX
-        Resource("serdes_tx", 0, DiffPairs("AD10", "AD11", dir="o")),
-        Resource("serdes_rx", 0, DiffPairs("AF9", "AF10", dir="i")),
+        Resource("serdes_clk", 0, DiffPairs("AF12", "AF13", dir="i"), Clock(250e6), Attrs(IO_TYPE="LVCMOS33")),
+
+        Resource("serdes_tx", 0, DiffPairs("AD7", "AD8", dir="o")),
+        Resource("serdes_rx", 0, DiffPairs("AF6", "AF7", dir="i")),
+
+        Resource("serdes_tx", 1, DiffPairs("AD10", "AD11", dir="o")),
+        Resource("serdes_rx", 1, DiffPairs("AF9", "AF10", dir="i")),
     ]
 
     connectors  = [
@@ -253,12 +258,8 @@ class SerDesTestTop(Elaboratable):
 
         # CRG --------------------------------------------------------------------------------------
         sys_clk_freq = int(100e6)
-        if self.linerate == 2.5e9:
-            refclk_from_pll = False
-            refclk_freq     = 156.25e6
-        else:
-            refclk_from_pll = True
-            refclk_freq     = 200e6
+        refclk_from_pll = False
+        refclk_freq     = 250e6
         m.submodules.crg = crg = _CRG(platform, sys_clk_freq, refclk_from_pll, refclk_freq)
 
         # USB-C CC ---------------------------------------------------------------------------------
@@ -277,26 +278,26 @@ class SerDesTestTop(Elaboratable):
         if refclk_from_pll:
             refclk = ClockSignal("ref")
         else:
-            refclk_pads = platform.request("refclk", 1)
-            m.d.comb += platform.request("refclk_en").eq(1)
-            m.d.comb += platform.request("refclk_rst_n").eq(1)
+            refclk_pads = platform.request("serdes_clk", 0, dir="-")
             refclk = Signal()
-            self.specials.extref0 = Instance("EXTREFB",
+            extref0 = Instance("EXTREFB",
                 i_REFCLKP=refclk_pads.p,
                 i_REFCLKN=refclk_pads.n,
                 o_REFCLKO=refclk,
                 p_REFCK_PWDNB="0b1",
                 p_REFCK_RTERM="0b1", # 100 Ohm
             )
-            self.extref0.attr.add(("LOC", "EXTREF0"))
+            # attrs={"LOC": "EXTREF0"}
+            # extref0.attr.add(("LOC", "EXTREF0"))
+            m.submodules += extref0
 
         # SerDes PLL -------------------------------------------------------------------------------
-        serdes_pll = SerDesECP5PLL(ClockSignal("ref"), refclk_freq=refclk_freq, linerate=self.linerate)
+        serdes_pll = SerDesECP5PLL(refclk, refclk_freq=refclk_freq, linerate=self.linerate)
         m.submodules += serdes_pll
 
         # SerDes -----------------------------------------------------------------------------------
-        tx_pads = platform.request("serdes_tx", 0, dir="-")
-        rx_pads = platform.request("serdes_rx", 0, dir="-")
+        tx_pads = platform.request("serdes_tx", 1, dir="-")
+        rx_pads = platform.request("serdes_rx", 1, dir="-")
         channel = 1
         serdes  = SerDesECP5(serdes_pll, tx_pads, rx_pads,
             channel       = channel,
